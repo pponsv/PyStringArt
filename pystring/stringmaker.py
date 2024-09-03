@@ -7,18 +7,19 @@ from .helper import rot_matrix, reflect_matrix
 
 
 class StringMaker:
-    def __init__(self, image_path):
+    def __init__(self, image_path, pow=1.0):
         self.image_path = image_path
         self.image = (
             1
             - cv2.cvtColor(cv2.imread(self.image_path), cv2.COLOR_BGR2GRAY)
             / 255
         )
-        self.sanitize()
+        self.sanitize(pow=pow)
 
-    def sanitize(self):
+    def sanitize(self, pow=1):
         self.resolution = np.min(self.image.shape)
         self.image = self.image[: self.resolution, : self.resolution]
+        self.image = self.image**pow
 
     def resize(self, resolution):
         self.image = cv2.resize(self.image, dsize=(resolution, resolution))
@@ -69,6 +70,24 @@ class StringMaker:
                         exit = True
             self.nails = np.vstack([circ_nails, tmp])
             print(self.nails.shape)
+        elif mode == "grid":
+            n = int(np.sqrt(self.n_nails))
+            self.n_nails = n**2
+            print(f"Reducing number of nails to {self.n_nails}")
+            x = np.linspace(0, self.resolution - 1, n, endpoint=True)
+            y = np.linspace(0, self.resolution - 1, n, endpoint=True)
+            self.nails = np.array(np.meshgrid(x, y)).reshape(2, -1).T
+        elif mode == "hex_grid":
+            n = int(np.sqrt(self.n_nails))
+            self.n_nails = n**2
+            delta = (self.resolution - 1) / n
+            print(f"Reducing number of nails to {self.n_nails}")
+            x = np.linspace(0, self.resolution - 1, n, endpoint=False)
+            y = np.linspace(0, self.resolution - 1, n, endpoint=False)
+            self.nails = np.array(np.meshgrid(x, y)).reshape(2, -1).T
+            self.nails[::2, 0] += delta / 2
+            self.nails[1::2, 1] += delta / 2
+            # self.nails[::2, 1] += delta
         # raise NotImplementedError("Not implemented yet")
         else:
             raise ValueError("Invalid mode")
@@ -211,12 +230,18 @@ class StringMaker:
             end = tuple(new_nails[self.sequence[idx + 1]].astype(int))
             cv2.line(canvas, start, end, line_color, thickness=line_width)  # type: ignore
             if idx % delta == 0:
+                tmp = cv2.putText(
+                    canvas.copy(), f"n_iter={idx}", (10, 20), 0, 0.5, 0
+                )  # type: ignore
                 vid.write(
                     cv2.cvtColor(
-                        cv2.resize(canvas, (vid_res, vid_res)),
+                        cv2.resize(tmp, (vid_res, vid_res)),
                         cv2.COLOR_GRAY2RGB,
                     )
                 )
+        canvas = cv2.putText(
+            canvas.copy(), f"n_iter={idx}", (10, 20), 0, 0.5, 0
+        )  # type: ignore
         for i in range(2 * fps):
             vid.write(
                 cv2.cvtColor(
