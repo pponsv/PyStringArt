@@ -24,15 +24,54 @@ class StringMaker:
         self.image = cv2.resize(self.image, dsize=(resolution, resolution))
         self.sanitize()
 
-    def make_nails(self, n_nails=300):
+    def make_nails(self, n_nails=300, mode="circle"):
         self.n_nails = n_nails
-        radius = self.resolution // 2
-        center = np.ceil(np.array([self.resolution, self.resolution]) / 2) - 1
-        delta_theta = 2 * np.pi / n_nails
-        coord = [np.array([0, 1])]
-        for i in range(1, n_nails):
-            coord.append(rot_matrix(delta_theta) @ coord[-1])
-        self.nails = np.array(coord) * radius + center
+        if mode == "circle":
+            th = np.linspace(0, 2 * np.pi, self.n_nails, endpoint=False)
+            radius = self.resolution // 2
+            center = (
+                np.ceil(np.array([self.resolution, self.resolution]) / 2) - 1
+            )
+            self.nails = np.array([np.cos(th), np.sin(th)]).T * radius + center
+        elif mode == "random":
+            self.nails = np.random.rand(self.n_nails, 2) * self.resolution
+        elif mode == "random_weighted":
+            tmp = []
+            g_img = cv2.GaussianBlur(self.image, (5, 5), 0)
+            for i in range(self.n_nails):
+                exit = False
+                while not exit:
+                    x, y = np.random.rand(2) * self.resolution
+                    if g_img[int(y), int(x)] > 0.8 * np.random.rand():
+                        tmp.append([x, y])
+                        exit = True
+            self.nails = np.array(tmp)
+        elif mode == "combined":
+            n_circ = int(0.7 * self.n_nails)
+            n_rand = self.n_nails - n_circ
+            th = np.linspace(0, 2 * np.pi, n_circ, endpoint=False)
+            radius = self.resolution // 2
+            center = (
+                np.ceil(np.array([self.resolution, self.resolution]) / 2) - 1
+            )
+            circ_nails = np.array([np.cos(th), np.sin(th)]).T * radius + center
+            tmp = []
+            g_img = cv2.GaussianBlur(self.image, (5, 5), 0)
+            for i in range(n_rand):
+                exit = False
+                while not exit:
+                    xy = np.random.rand(2)
+                    if np.sum((xy - 0.5) ** 2) > 0.20:
+                        continue
+                    x, y = ((xy * 50).astype(int) / 50) * self.resolution
+                    if g_img[int(y), int(x)] > 0.8 * np.random.rand():
+                        tmp.append([x, y])
+                        exit = True
+            self.nails = np.vstack([circ_nails, tmp])
+            print(self.nails.shape)
+        # raise NotImplementedError("Not implemented yet")
+        else:
+            raise ValueError("Invalid mode")
         self.nail_dict = {
             idx: nail for idx, nail in enumerate(self.nails.astype(int))
         }
@@ -105,7 +144,7 @@ class StringMaker:
         pos = np.array([self.nail_dict[i] for i in self.sequence]).T
         if transform is True:
             pos = reflect_matrix() @ (rot_matrix(np.pi) @ pos)
-        plt.plot(pos[0], pos[1], "k", lw=0.1)
+        plt.plot(pos[0], pos[1], "k", lw=0.3)
         plt.gca().set_aspect("equal")
         if show:
             plt.show()
